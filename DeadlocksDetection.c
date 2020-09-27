@@ -144,7 +144,7 @@ void inform_deadlock()
     printf("\nEncontrou deadlock! Ciclo: Processo: %ld\n",pthread_self());
     deadlock = 1;
 
-    for(int i=0; i < 10000000; i++)
+    for(int i=0; i < 1000; i++)
     {
         printf("DEADLOCK!!!");
     }
