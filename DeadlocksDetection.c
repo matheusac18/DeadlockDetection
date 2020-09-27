@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <semaphore.h>
 #include <dlfcn.h>
+#include <pthread.h>
+#include <unistd.h>
 
 enum Type{PROCESS, RESOURCE};
 
@@ -12,7 +14,7 @@ int (*_sem_post)(sem_t *) = NULL;
 
 typedef struct sourceType
 {
-    int id;
+    long int id;
     enum Type type;//Process or resource(0-1)
 }SourceType;
 
@@ -45,8 +47,10 @@ int search_vertex(SourceType v)
 {
     for(int i = 0; i < TG->NVertex; i++)
     {
+        
         if(TG->list[i].s.type == v.type && TG->list[i].s.id == v.id)
         {
+            
             return i;
         }
     }
@@ -79,11 +83,20 @@ int add_edge(SourceType i, SourceType j)
 
 int verify_edge(SourceType i, SourceType j)
 {
-    Vertex *v = &(TG->list[search_vertex(i)]);
+    if(TG->NVertex == 0)
+        return 0;
+
+    int i_index = search_vertex(i);
+
+    if(i_index == -1)
+        return 0; 
+
+    Vertex *v = &(TG->list[i_index]);
+    
     while(v != NULL)
     {
         if(v->s.id == j.id)
-            return 1
+            return 1;
 
         v = v->next;
     }
@@ -112,21 +125,42 @@ int remove_edge(SourceType i, SourceType j)
     }
 }
 
-void inform_deadlock()
+void print_adj_list()
 {
-    printf("\nEncontrou deadlock! Ciclo: ");
-    deadlock = 1;
-    for(int i=0; i < k-1; i++)
+    for(int i = 0; i < TG->NVertex; i++)
     {
-        printf("%d->",TG->list[path[i]].s.id);
+        Vertex *v = &(TG->list[i]);
+        while(v != NULL)
+        {
+            printf("[ID: %ld Type: %d]->",v->s.id,v->s.type);
+            v = v->next;
+        }
+        printf("\n");
     }
-    printf("%d",TG->list[path[k-1]].s.id);
 }
 
-int DFS(int i)
+void inform_deadlock()
+{
+    printf("\nEncontrou deadlock! Ciclo: Processo: %ld\n",pthread_self());
+    deadlock = 1;
+
+    for(int i=0; i < 10000000; i++)
+    {
+        printf("DEADLOCK!!!");
+    }
+
+    for(int i=0; i < k-1; i++)
+    {
+        printf("%ld->",TG->list[path[i]].s.id);
+    }
+    printf("%ld",TG->list[path[k-1]].s.id);
+
+}
+
+void DFS(int i)
 {
     if(deadlock == 1)
-        return 0;
+        return;
 
     Vertex *v = &(TG->list[i]);
     if(visited[i] == 1)
@@ -151,58 +185,66 @@ int search_for_cycle(int testIndex)
     for(int i = 0; i < TG->NVertex;i++)
     {
         visited[i] = 0;//not visited
+    }
+    for(int i = 0; i <= MAX;i++)
+    {
         path[i] = -1 ;
     }
+
 
     DFS(testIndex);
 }
 
-void print_adj_list()
+
+
+
+void create_graph()
 {
-    for(int i = 0; i < TG->NVertex; i++)
+    if(TG==NULL)
     {
-        Vertex *v = &(TG->list[i]);
-        while(v != NULL)
-        {
-            printf("[ID: %d Type: %d]->",v->s.id,v->s.type);
-            v = v->next;
-        }
-        printf("\n");
+        TG = (TaskGraph*)malloc(sizeof(TaskGraph));
+        TG->NVertex = 0;
     }
 }
 
-
 int sem_wait(sem_t *sem)
 {
+    
     int r = -1;
     if(!_sem_wait)
     {
         _sem_wait = dlsym(RTLD_NEXT, "sem_wait");//irá apontar para o sem_wait original
     }
 
+    create_graph();
+    deadlock = 0;
     SourceType process;
     process.type = PROCESS;
     process.id = pthread_self();
 
     SourceType resource;
     resource.type = RESOURCE;
-    resource.id = sem;
-    
+    resource.id = (long int)sem;
+
     //add edge from process to resource(process is requesting resource)
     if(verify_edge(process,resource) == 0)
     {
         add_edge(process,resource);
         //verify if there's a cycle(ie deadlock) in graph
-        search_for_cycle(process);
+        search_for_cycle(search_vertex(process));
     }
 
+    
     if(deadlock == 1)//found deadlock
     {
+        
         remove_edge(process,resource);
+        
         return -2;
     }
     else
     {
+       
         int sval = 0;
         sem_getvalue(sem,&sval);
         if(sval>0)
@@ -230,7 +272,7 @@ int sem_post(sem_t *sem)
 
     SourceType resource;
     resource.type = RESOURCE;
-    resource.id = sem;
+    resource.id = (long int)sem;
     
     remove_edge(resource,process);
 
@@ -238,7 +280,7 @@ int sem_post(sem_t *sem)
     return(r);
 }
 
-int main(){
+/*int main(){
     TG = (TaskGraph*)malloc(sizeof(TaskGraph));
     TG->NVertex = 0;
 
@@ -272,4 +314,4 @@ int main(){
     search_for_cycle(search_vertex(newVertex1));
 
     return 0;
-}
+}*/
